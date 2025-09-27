@@ -6,7 +6,7 @@ Designed for penetration testing and network reconnaissance.
 ## Features
 
 - Scans a range of ports on a target host.
-- Detects open and closed TCP ports.
+- Detects open TCP ports.
 - Multithreaded for faster scanning.
 - Optional banner grabbing (for open ports).
 - Outputs results in simple text format.
@@ -24,3 +24,5 @@ Designed for penetration testing and network reconnaissance.
 [+] port: 3000      status: open
 ```
 Tested on Kali Linux
+
+New updates will be soon...
