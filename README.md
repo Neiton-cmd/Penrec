@@ -23,6 +23,16 @@ Designed for penetration testing and network reconnaissance.
 [+] port: 21        status: open
 [+] port: 3000      status: open
 ```
+
+## Docker Lab
+
+```bash
+cd /lab # directory with docker-compose conf file
+docker compose up # run a safe machine with open ports(FTP - 21,
+# JuiceShop - 3000, TCP port - 4444
+docker compose down # close docker lab
+```
+
 Tested on Kali Linux
 
 New updates will be soon...
