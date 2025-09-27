@@ -1,0 +1,5 @@
+/home/kali/C++/penrec/build/CMakeFiles/penrec.dir
+/home/kali/C++/penrec/build/CMakeFiles/scanner.dir
+/home/kali/C++/penrec/build/CMakeFiles/sniffer.dir
+/home/kali/C++/penrec/build/CMakeFiles/edit_cache.dir
+/home/kali/C++/penrec/build/CMakeFiles/rebuild_cache.dir

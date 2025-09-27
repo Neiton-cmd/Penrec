@@ -1,0 +1,2 @@
+/usr/bin/ar qc libsniffer.a CMakeFiles/sniffer.dir/cpp/src/sniffer.cpp.o
+/usr/bin/ranlib libsniffer.a

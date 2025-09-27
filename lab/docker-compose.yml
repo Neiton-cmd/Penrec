@@ -1,0 +1,31 @@
+version: "3.8"
+
+services:
+
+  vulnerable-web:
+    image: bkimminich/juice-shop
+    container_name: vulnerable-web
+    ports:
+      - "3000:3000"
+    restart: always
+
+  vulnerable-ftp:
+    image: fauria/vsftpd
+    container_name: vulnerable-ftp
+    environment:
+      - FTP_USER=testuser
+      - FTP_PASS=testpass
+      - PASV_ADDRESS=127.0.0.1
+      - PASV_MIN_PORT=30000
+      - PASV_MAX_PORT=30009
+    ports:
+      - "21:21"
+      - "30000-30009:30000-30009"
+    restart: always
+
+  vulnerable-tcp:
+    image: alpine/socat
+    container_name: vulnerable-tcp
+    command: tcp-l:4444,reuseaddr,fork system:"echo Hello from TCP server"
+    ports:
+      - "4444:4444"

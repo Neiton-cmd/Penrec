@@ -1,0 +1,58 @@
+#include <iostream>
+#include <string>
+#include <thread> // std::thread
+#include <vector>
+#include <netinet/in.h> // struct of net for example sockaddr_in also constans AF_NET, INADDR_ANY
+#include <arpa/inet.h> // func for working with IP addresses
+#include <unistd.h> // for sockers close() and other
+#include <sys/socket.h> // main socket-API socket(), connect() and other
+#include <netdb.h>
+
+using namespace std;
+
+// Func of port check
+void scanPort(const string& ip, int port) {
+    int sockfd; // return socket()
+    struct sockaddr_in addr; // need for connect() IPv4 port IP
+
+    // Socket creation
+    sockfd = socket(AF_INET, SOCK_STREAM, 0); // (IPv4, TCP, default protocol)
+    if (sockfd < 0){return;} // if error - return go out of func
+
+    addr.sin_family = AF_INET;
+    addr.sin_port = htons(port);
+    inet_pton(AF_INET, ip.c_str(), &addr.sin_addr);// convert IP from string to binary
+
+    //connects to IP, if connect returns 0 connection is successful
+    int result = connect(sockfd, (struct sockaddr*)&addr, sizeof(addr));
+    if (result == 0) {
+        cout << "[+] Port " << port << " open" << endl;
+    }
+
+    close(sockfd); // close socket
+}
+
+int main(int argc, char* argv[]) {
+    if (argc != 4) { // check for correct number of arguments
+        cerr << "Usage: " << argv[0] << " <IP> <start_port> <end_port>" << endl;
+        return 1;
+    }
+
+    string ip = argv[1];
+    int startPort = stoi(argv[2]);
+    int endPort = stoi(argv[3]); //stoi converts string to int
+
+    vector<thread> threads;
+
+    for (int port = startPort; port <= endPort; port++) {
+        threads.emplace_back(scanPort, ip, port);
+        if (threads.size() >= 100) { // limit number of concurrent threads 100
+            for (auto& t : threads) t.join();
+            threads.clear();
+        }
+    }
+
+    for (auto& t : threads) t.join(); // wait for all threads to finish
+
+    return 0;
+}
