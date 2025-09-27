@@ -16,4 +16,11 @@ Designed for penetration testing and network reconnaissance.
 
 ```bash
 ./portscanner <target> <start_port> <end_port> [threads] [timeout_ms]
+```
+## Output example
 
+```bash
+[+] port: 21        status: open
+[+] port: 3000      status: open
+```
+Tested on Kali Linux
