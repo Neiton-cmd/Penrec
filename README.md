@@ -12,16 +12,27 @@ Designed for penetration testing and network reconnaissance.
 - Outputs results in simple text format.
 - Works on IPv4 (IPv6 support can be added).
 
+##Downloading
+```bash
+wget https://github.com/Neiton-cmd/Penrec/blob/main/cpp/src/penrec -O penrec
+```
+
 ## Usage
 
 ```bash
-./portscanner <target> <start_port> <end_port> [threads] [timeout_ms]
+./penrec -t <target> -s <start_port> -e <end_port> -n <num_of_threads> -o <timeout>
 ```
+
+For help instruction use
+```bash
+penrec --help
+```
+
 ## Output example
 
 ```bash
-[+] port: 21        status: open
-[+] port: 3000      status: open
+[+] port:      21   open
+[+] port:      3000   open
 ```
 
 ## Docker Lab
