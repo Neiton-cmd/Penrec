@@ -15,6 +15,13 @@ Designed for penetration testing and network reconnaissance.
 ## Downloading
 Find in Releases latest version with sourse code: binary_file penrec
 
+Click in penrec and download raw file
+Give permissions to execute for file
+```bash
+chmod +x penrec # give perm
+./penrec --help # work-check
+```
+
 ## Usage
 
 ```bash
