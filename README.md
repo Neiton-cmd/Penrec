@@ -13,9 +13,7 @@ Designed for penetration testing and network reconnaissance.
 - Works on IPv4 (IPv6 support can be added).
 
 ## Downloading
-```bash
-wget https://github.com/Neiton-cmd/Penrec/blob/main/cpp/src/penrec -O penrec
-```
+Find in Releases latest version with sourse code: binary_file penrec
 
 ## Usage
 
