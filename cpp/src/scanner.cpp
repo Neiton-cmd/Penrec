@@ -12,120 +12,162 @@ Scanner::Scanner(const std::string& target, int start_port, int end_port,
 { }
 
 // =================== Public run ===================
+// Replace the entire Scanner::run() with this implementation
+// --- debug-enabled run() (insert or replace your existing run())
 void Scanner::run() {
-    // prepare ports queue
-    for (int p = start_port_; p <= end_port_; ++p) {
-        ports_queue_.push_back(p);
+    // Resolve once (IPv4)
+    struct addrinfo hints;
+    struct addrinfo *res = nullptr;
+    memset(&hints, 0, sizeof(hints));
+    hints.ai_family = AF_INET;
+    hints.ai_socktype = SOCK_STREAM;
+    int gai = getaddrinfo(target_.c_str(), nullptr, &hints, &res);
+    if (gai != 0 || res == nullptr) {
+        std::lock_guard<std::mutex> lk(results_mutex_);
+        if (res) freeaddrinfo(res);
+        return;
     }
 
-    // start workers
-    stop_workers_ = false;
-    for (int i = 0; i < max_threads_; ++i) {
-        workers_.emplace_back(&Scanner::workerLoop, this);
+    struct sockaddr_in base_addr;
+    memset(&base_addr, 0, sizeof(base_addr));
+    if (res->ai_addr && res->ai_addrlen >= (socklen_t)sizeof(sockaddr_in)) {
+        memcpy(&base_addr, res->ai_addr, sizeof(sockaddr_in));
+    } else {
+        base_addr.sin_family = AF_INET;
+        base_addr.sin_addr.s_addr = INADDR_ANY;
     }
 
-    // notify workers
-    queue_cv_.notify_all();
+    const int BATCH_SIZE = 500;
+    for (int batchStart = start_port_; batchStart <= end_port_; batchStart += BATCH_SIZE) {
+        int batchEnd = std::min(batchStart + BATCH_SIZE - 1, end_port_);
 
-    // wait for workers to finish
-    for (auto &t : workers_) {
-        if (t.joinable()) t.join();
+        int epfd = epoll_create1(0);
+        if (epfd < 0) {
+            freeaddrinfo(res);
+            return;
+        }
+
+        std::unordered_map<int,int> fd_to_port;
+
+        // Create non-blocking sockets and register
+        for (int port = batchStart; port <= batchEnd; ++port) {
+            int sockfd = socket(AF_INET, SOCK_STREAM | SOCK_CLOEXEC, 0);
+            if (sockfd < 0) {
+                ScanResult r; r.port = port; r.open = false; r.error_code = errno;
+                pushResult(r);
+                continue;
+            }
+
+            int flags = fcntl(sockfd, F_GETFL, 0);
+            if (flags == -1) flags = 0;
+            fcntl(sockfd, F_SETFL, flags | O_NONBLOCK);
+
+            struct sockaddr_in addr = base_addr;
+            addr.sin_port = htons(port);
+
+            int rc = connect(sockfd, (struct sockaddr*)&addr, sizeof(addr));
+            if (rc == 0) {
+                ScanResult r; r.port = port; r.open = true; r.error_code = 0;
+                r.banner = tryBannerGrab(sockfd, timeout_ms_);
+                pushResult(r);
+                close(sockfd);
+                continue;
+            } else if (errno != EINPROGRESS) {
+                ScanResult r; r.port = port; r.open = false; r.error_code = errno;
+                pushResult(r);
+                close(sockfd);
+                continue;
+            }
+
+            struct epoll_event ev;
+            ev.events = EPOLLOUT | EPOLLERR | EPOLLET;
+            ev.data.fd = sockfd;
+            if (epoll_ctl(epfd, EPOLL_CTL_ADD, sockfd, &ev) < 0) {
+                ScanResult r; r.port = port; r.open = false; r.error_code = errno;
+                pushResult(r);
+                close(sockfd);
+                continue;
+            }
+            fd_to_port[sockfd] = port;
+        }
+
+        if (fd_to_port.empty()) {
+            close(epfd);
+            continue;
+        }
+
+        const int MAX_EVENTS = 4096;
+        std::vector<struct epoll_event> events(MAX_EVENTS);
+
+        while (!fd_to_port.empty()) {
+            int n = epoll_wait(epfd, events.data(), (int)events.size(), timeout_ms_);
+            if (n < 0) {
+                if (errno == EINTR) continue;
+                break;
+            }
+            if (n == 0) {
+                for (auto &p : fd_to_port) {
+                    ScanResult r; r.port = p.second; r.open = false; r.error_code = ETIMEDOUT;
+                    pushResult(r);
+                    close(p.first);
+                }
+                fd_to_port.clear();
+                break;
+            }
+
+            for (int i = 0; i < n; ++i) {
+                int fd = events[i].data.fd;
+                auto it = fd_to_port.find(fd);
+                if (it == fd_to_port.end()) {
+                    epoll_ctl(epfd, EPOLL_CTL_DEL, fd, nullptr);
+                    close(fd);
+                    continue;
+                }
+                int port = it->second;
+
+                int so_error = 0;
+                socklen_t len = sizeof(so_error);
+                if (getsockopt(fd, SOL_SOCKET, SO_ERROR, &so_error, &len) < 0) so_error = errno;
+
+                ScanResult r;
+                r.port = port;
+                r.open = (so_error == 0);
+                if (r.open) {
+                    r.banner = tryBannerGrab(fd, timeout_ms_);
+                } else {
+                    r.error_code = so_error;
+                }
+                pushResult(r);
+
+                epoll_ctl(epfd, EPOLL_CTL_DEL, fd, nullptr);
+                close(fd);
+                fd_to_port.erase(it);
+            }
+        }
+
+        close(epfd);
     }
-    workers_.clear();
+
+    freeaddrinfo(res);
 }
 
-// =================== Get results ===================
+
+    // // final cleanup
+    // for (int fd : fds_to_close) {
+    //     // if still open (in case not removed), try to close
+    //     // but we already closed in loop, so ignore errors
+    //     // close(fd);
+    //     (void)fd;
+    // }
+    // close(epfd);
+    // freeaddrinfo(res);
+
+
 std::vector<ScanResult> Scanner::getResults() {
     std::lock_guard<std::mutex> lk(results_mutex_);
     return results_;
 }
 
-std::string Scanner::resultsToText() {
-    std::lock_guard<std::mutex> lk(results_mutex_);
-    std::ostringstream oss;
-    oss << "[\n";
-    for (const auto &r : results_){
-        oss << "[+] port:    " << r.port << "       status    " << 
-            (r.open ? "open" : "closed") << endl;
-    }
-    return oss.str();
-}
-
-// =================== workerLoop ===================
-void Scanner::workerLoop() {
-    while (true) {
-        int port = -1;
-        {   // pop a port from queue
-            std::unique_lock<std::mutex> lk(queue_mutex_);
-            queue_cv_.wait(lk, [this] { return !ports_queue_.empty() || stop_workers_; });
-            if (ports_queue_.empty() && stop_workers_) {
-                return;
-            }
-            if (!ports_queue_.empty()) {
-                port = ports_queue_.back();
-                ports_queue_.pop_back();
-            } else {
-                continue;
-            }
-        }
-
-        // scan
-        ScanResult r = scanPort(port);
-        pushResult(r);
-
-        // if queue empty now and all threads idle, signal stopping condition
-        {
-            std::unique_lock<std::mutex> lk(queue_mutex_);
-            if (ports_queue_.empty()) {
-                // set stop flag only when all tasks picked (simple approach)
-                stop_workers_ = true;
-                queue_cv_.notify_all();
-            }
-        }
-    }
-}
-
-// =================== scanPort (core) ===================
-ScanResult Scanner::scanPort(int port) {
-    ScanResult res;
-    res.port = port;
-    res.open = false;
-    res.error_code = 0;
-
-    struct addrinfo hints;
-    struct addrinfo *servinfo = nullptr;
-    memset(&hints, 0, sizeof(hints));
-    hints.ai_socktype = SOCK_STREAM;
-    hints.ai_family = AF_INET; // allow IPv4 
-
-    std::string portStr = std::to_string(port);
-    int gai = getaddrinfo(target_.c_str(), portStr.c_str(), &hints, &servinfo);
-    if (gai != 0) {
-        res.error_code = gai; // store getaddrinfo error
-        return res;
-    }
-
-    // try each addr until success
-    for (struct addrinfo *p = servinfo; p != nullptr; p = p->ai_next) {
-        int err = 0;
-        int sockfd = connectWithTimeout(p, timeout_ms_, err);
-        if (sockfd >= 0) {
-            // success
-            res.open = true;
-            res.banner = tryBannerGrab(sockfd, timeout_ms_);
-            close(sockfd);
-            break;
-        } else {
-            res.open = false;
-            // record last error
-            res.error_code = err;
-            // try next address
-        }
-    }
-
-    freeaddrinfo(servinfo);
-    return res;
-}
 
 std::string Scanner::resultsToTextOpenOnly() {
     std::lock_guard<std::mutex> lk(results_mutex_);

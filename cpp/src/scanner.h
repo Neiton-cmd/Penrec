@@ -1,6 +1,7 @@
 #ifndef SCANNER_H
 #define SCANNER_H
-
+#pragma once
+#include <unordered_map>
 #include <string>
 #include <vector>
 #include <thread>
@@ -18,6 +19,9 @@
 #include <chrono>
 #include <algorithm>
 #include <iostream>
+#include <sys/epoll.h>
+#include <errno.h>
+
 
 struct ScanResult {
     int port = 0;
@@ -44,6 +48,8 @@ public:
     std::string resultsToText(); // IGNORE
 
     std::string resultsToTextOpenOnly(); 
+
+    void scanBatch(int batchStart, int batchEnd ); // new method to scan a batch of ports
 
     
 private:
