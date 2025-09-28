@@ -12,7 +12,7 @@ Designed for penetration testing and network reconnaissance.
 - Outputs results in simple text format.
 - Works on IPv4 (IPv6 support can be added).
 
-##Downloading
+## Downloading
 ```bash
 wget https://github.com/Neiton-cmd/Penrec/blob/main/cpp/src/penrec -O penrec
 ```
